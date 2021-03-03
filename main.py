@@ -1,9 +1,9 @@
+import csv
 import os
 import shutil
 import gzip
 import pandas as pd
 import json
-
 
 ROOT_DIR = "/Volumes/Media/PhoneLab Dataset/logcat"
 
@@ -21,14 +21,43 @@ def main():
         # read_sqlite_log(device_path)
     # print(devices_dir)
 
-    # df = read_sqlite_log("/Volumes/Media/PhoneLab Dataset/logcat/1b0676e5fb2d7ab82a2b76887c53e94cf0410826/tag/SQLite-Query-PhoneLab/2015/03/")
-    df = read_sqlite_log(
-        "/Volumes/Media/PhoneLab Dataset/logcat/0ee9cead2e2a3a58a316dc27571476e8973ff944/tag/SQLite-Query-PhoneLab/2015/03/")  # 1
-    print(df)
-    parse_log(df)
+    df = read_sqlite_log("/Volumes/Media/PhoneLab Dataset/logcat/1b0676e5fb2d7ab82a2b76887c53e94cf0410826/tag/SQLite-Query-PhoneLab/2015/03/")
+    # df = read_sqlite_log(
+        # "/Volumes/Media/PhoneLab Dataset/logcat/0ee9cead2e2a3a58a316dc27571476e8973ff944/tag/SQLite-Query-PhoneLab/2015/03/")  # 1
+    schema, query_log = parse_sqlite_log(df)
+    export_to_csv(schema, query_log, "1b0676e5fb2d7ab82a2b76887c53e94cf0410826")
 
 
-def parse_log(df):
+def export_to_csv(schema, query_log, device_dir):
+    print("Exporting to CSV")
+    if not os.path.exists(device_dir):
+        os.makedirs(device_dir)
+    if not os.path.exists(device_dir + "/data"):
+        os.makedirs(device_dir + "/data")
+
+    for k, v in schema.items():
+        column_names = []
+        if not os.path.exists(device_dir + "/data/" + k):
+            os.makedirs(device_dir + "/data/" + k)
+        with open(device_dir + "/data/" + k + "/" + k + ".csv", 'w') as out:
+            csv_out = csv.writer(out, delimiter=';')
+            splits = v.split("cid")
+            for split in splits:
+                subsplits = split.split(",")
+                for subsubsplit in subsplits:
+                    if "name:" in subsubsplit:
+                        column_names.append(subsubsplit[5:])
+            csv_out.writerow(column_names)
+
+    with open(device_dir + "/query_log.csv", 'w') as out:
+        csv_out = csv.writer(out, delimiter=';')
+        csv_out.writerow(["start_timestamp", "end_timestamp", "date_time"])
+        for row in query_log:
+            csv_out.writerow(row)
+
+
+def parse_sqlite_log(df):
+    print("Parsing SQLite log")
     schema = {}
     query_log = []
     for row in df.itertuples(index=False):
@@ -36,15 +65,18 @@ def parse_log(df):
             details = json.loads(row.details)
             if details["Action"] == "SCHEMA" and details["TABLE_NAME"] not in schema:
                 schema[details["TABLE_NAME"]] = details["SCHEMA"]
-            elif details["Action"] in ["SELECT", "INSERT", "UPSERT", "UPDATE", "DELETE"]:
+            elif details["Action"] in ["SELECT", "INSERT", "UPSERT", "UPDATE",
+                                       "DELETE"] and "PRAGMA" not in details["Results"]:
                 sqlite_program = details["Results"]
                 if sqlite_program.startswith('SQLiteProgram: '):
-                    sqlite_program = sqlite_program[:-15]
-                query_log.append((row.start_timestamp, row.end_timestamp, row.date_time, sqlite_program))
+                    sqlite_program = sqlite_program[15:]
+                query_log.append(
+                    (row.start_timestamp, row.end_timestamp, row.date_time, sqlite_program))
         except:
             pass
     print(schema.keys())
     print(query_log)
+    return schema, query_log
 
 
 def read_sqlite_log(device_path):
@@ -52,6 +84,7 @@ def read_sqlite_log(device_path):
     Reads the sqlite logs and returns the concatenated dataframe per device, i.e. combines all days
     into one big ordered dataframe.
     """
+    print("Reading SQLite log")
     files = sorted(
         [filename for filename in os.listdir(path=device_path) if filename.endswith(".out")],
         key=lambda x: int(os.path.splitext(x)[0]))
