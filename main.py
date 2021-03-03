@@ -5,33 +5,30 @@ import gzip
 import pandas as pd
 import json
 
-ROOT_DIR = "/Volumes/Media/PhoneLab Dataset/logcat"
-
-
-# "TABLE_NAME":"sqlite_sequence","SCHEMA":"cid:0,name:name,type:,notnull:0,dflt_value:null,pk:0...cid:1,name:seq,type:,notnull:0,dflt_value:null,pk:0...","Action":"SCHEMA"}
+DATA_DIR = "/Volumes/Media/PhoneLab Dataset/logcat"
 
 def main():
-    # pd.set_option('display.max_colwidth', None)
-    # pd.set_option('display.max_columns', None)
-
-    for device_dir in next(os.walk(ROOT_DIR))[1]:
-        # /tag/SQLite-Query-Phonelab/*/*/*.out.gz
-        device_path = ROOT_DIR + "/" + device_dir + "/tag/SQLite-Query-Phonelab/2015/03/"
-        # extract_all_in_dir(device_path)
-        # read_sqlite_log(device_path)
-    # print(devices_dir)
-
-    df = read_sqlite_log("/Volumes/Media/PhoneLab Dataset/logcat/1b0676e5fb2d7ab82a2b76887c53e94cf0410826/tag/SQLite-Query-PhoneLab/2015/03/")
-    # df = read_sqlite_log(
-        # "/Volumes/Media/PhoneLab Dataset/logcat/0ee9cead2e2a3a58a316dc27571476e8973ff944/tag/SQLite-Query-PhoneLab/2015/03/")  # 1
-    schema, query_log = parse_sqlite_log(df)
-    export_to_csv(schema, query_log, "1b0676e5fb2d7ab82a2b76887c53e94cf0410826")
-
+    """
+    For each device, reads and parses the SQLite log and outputs the query log and schema of the
+    database
+    """
+    for device_name in next(os.walk(DATA_DIR))[1]:
+        if not os.path.exists(device_name):
+            print(f"New device: {device_name}")
+            os.makedirs(device_name)
+            device_data_path = DATA_DIR + "/" + device_name + "/tag/SQLite-Query-Phonelab/2015/03/"
+            extract_all_in_dir(device_data_path)
+            df = read_sqlite_log(device_data_path)
+            schema, query_log = parse_sqlite_log(df)
+            export_to_csv(schema, query_log, device_name)
+        else:
+            print(f"Device folder found, skipping: {device_name}")
 
 def export_to_csv(schema, query_log, device_dir):
-    print("Exporting to CSV")
-    if not os.path.exists(device_dir):
-        os.makedirs(device_dir)
+    """
+    Writes the schema and query_log to disk at working directory in CSV format
+    """
+    print("(4/4) Exporting to CSV")
     if not os.path.exists(device_dir + "/data"):
         os.makedirs(device_dir + "/data")
 
@@ -57,7 +54,11 @@ def export_to_csv(schema, query_log, device_dir):
 
 
 def parse_sqlite_log(df):
-    print("Parsing SQLite log")
+    """
+    Parses the SQLite log entries for SCHEMA and CRUD actions to extract the schema
+    and query log
+    """
+    print("(3/4) Parsing SQLite log")
     schema = {}
     query_log = []
     for row in df.itertuples(index=False):
@@ -74,8 +75,6 @@ def parse_sqlite_log(df):
                     (row.start_timestamp, row.end_timestamp, row.date_time, sqlite_program))
         except:
             pass
-    print(schema.keys())
-    print(query_log)
     return schema, query_log
 
 
@@ -84,7 +83,7 @@ def read_sqlite_log(device_path):
     Reads the sqlite logs and returns the concatenated dataframe per device, i.e. combines all days
     into one big ordered dataframe.
     """
-    print("Reading SQLite log")
+    print("(2/4) Reading SQLite log")
     files = sorted(
         [filename for filename in os.listdir(path=device_path) if filename.endswith(".out")],
         key=lambda x: int(os.path.splitext(x)[0]))
@@ -100,7 +99,7 @@ def extract_all_in_dir(path):
     Extracts all the .gz files in a directory to that same directory if they are not already
     extracted
     """
-    print(f"Extracting archives in {path}")
+    print(f"(1/4) Extracting archives in {path}")
     for filename in os.listdir(path=path):
         if os.path.exists(path + os.path.splitext(filename)[0]):
             continue
@@ -114,6 +113,4 @@ def extract_all_in_dir(path):
 if __name__ == '__main__':
     main()
 
-# Desired output:
-# Per device, sequence of queries
-# Per device, schema of the database
+
